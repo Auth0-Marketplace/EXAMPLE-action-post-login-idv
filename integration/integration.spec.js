@@ -3,15 +3,16 @@ const { faker } = require("@faker-js/faker");
 jest.mock("axios");
 const axiosMock = require("axios");
 
-const { eventMock } = require("../__mocks__/event-post-login");
+const { makeEventMock } = require("../__mocks__/event-post-login");
 const { apiMock } = require("../__mocks__/api-post-login");
 
 const { onExecutePostLogin, onContinuePostLogin } = require("./integration.action");
 
 describe("Identity Verification", () => {
-  let consoleLogMock;
+  let consoleLogMock, eventMock;
 
   beforeEach(() => {
+    eventMock = makeEventMock();
     consoleLogMock = jest.spyOn(console, "log").mockImplementation();
   });
 
@@ -19,9 +20,6 @@ describe("Identity Verification", () => {
     consoleLogMock.mockRestore();
     axiosMock.mockRestore();
     jest.clearAllMocks();
-    eventMock.secrets = {};
-    eventMock.client.metadata = {};
-    eventMock.user.app_metadata = {};
   });
 
   describe("onExecutePostLogin", () => {
@@ -59,13 +57,13 @@ describe("Identity Verification", () => {
           },
         };
         eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
-        eventMock.secrets.IDV_DOMAIN = faker.internet.domainName();
+        eventMock.configuration.IDV_DOMAIN = faker.internet.domainName();
         await onExecutePostLogin(eventMock, apiMock);
       });
 
       it("sets the IDV id claim", async () => {
         expect(apiMock.idToken.setCustomClaim).toBeCalledWith(
-          "https://your-claim-namespace/id",
+          "https://id-verification/id",
           eventMock.user.app_metadata.yourMetadataNamespace.id
         );
       });
@@ -79,20 +77,20 @@ describe("Identity Verification", () => {
           },
         };
         eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
-        eventMock.secrets.IDV_DOMAIN = faker.internet.domainName();
-        eventMock.secrets.IDV_EXPIRES_IN = `${30 * 24 * 60 * 60}`; // 30 days
+        eventMock.configuration.IDV_DOMAIN = faker.internet.domainName();
+        eventMock.configuration.IDV_EXPIRES_IN = `${30 * 24 * 60 * 60}`; // 30 days
         await onExecutePostLogin(eventMock, apiMock);
       });
 
       it("sets the IDV status claim", async () => {
         expect(apiMock.idToken.setCustomClaim).toBeCalledWith(
-          "https://your-claim-namespace/status",
+          "https://id-verification/status",
           "valid"
         );
       });
       it("sets the IDV last check claim", async () => {
         expect(apiMock.idToken.setCustomClaim).toBeCalledWith(
-          "https://your-claim-namespace/last-check",
+          "https://id-verification/last-check",
           eventMock.user.app_metadata.yourMetadataNamespace.lastSuccessfulCheck
         );
       });
@@ -112,12 +110,12 @@ describe("Identity Verification", () => {
         describe("IDV optional", () => {
           beforeEach(async () => {
             eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
-            eventMock.secrets.IDV_DOMAIN = faker.internet.domainName();
+            eventMock.configuration.IDV_DOMAIN = faker.internet.domainName();
             await onExecutePostLogin(eventMock, apiMock);
           });
           it("sets the IDV user ID claim", async () => {
             expect(apiMock.idToken.setCustomClaim).toBeCalledWith(
-              "https://your-claim-namespace/status",
+              "https://id-verification/status",
               "skipped"
             );
           });
@@ -131,7 +129,7 @@ describe("Identity Verification", () => {
         describe("IDV required", () => {
           beforeEach(async () => {
             eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
-            eventMock.secrets.IDV_DOMAIN = faker.internet.domainName();
+            eventMock.configuration.IDV_DOMAIN = faker.internet.domainName();
             eventMock.client.metadata.IDV_REQUIRED = "true";
             await onExecutePostLogin(eventMock, apiMock);
           });
@@ -152,7 +150,7 @@ describe("Identity Verification", () => {
             },
           };
           eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
-          eventMock.secrets.IDV_DOMAIN = faker.internet.domainName();
+          eventMock.configuration.IDV_DOMAIN = faker.internet.domainName();
           redirectToken = faker.datatype.uuid();
           apiMock.redirect.encodeToken = jest.fn(() => redirectToken);
           apiMock.redirect.canRedirect = jest.fn(() => true);
@@ -170,7 +168,7 @@ describe("Identity Verification", () => {
         });
         it("sends the user with a token", async () => {
           expect(apiMock.redirect.sendUserTo).toBeCalledWith(
-            `https://${eventMock.secrets.IDV_DOMAIN}/idv-check`,
+            `https://${eventMock.configuration.IDV_DOMAIN}/id-verification`,
             {
               query: { token: redirectToken },
             }
@@ -243,14 +241,21 @@ describe("Identity Verification", () => {
       it("sets the IDV status claim", async () => {
         expect(apiMock.idToken.setCustomClaim).nthCalledWith(
           1,
-          "https://your-claim-namespace/status",
+          "https://id-verification/status",
           "success"
+        );
+      });
+      it("sets the last check claim", async () => {
+        expect(apiMock.idToken.setCustomClaim).toHaveBeenNthCalledWith(
+          2,
+          "https://id-verification/last-check",
+          tokenIat
         );
       });
       it("sets the IDV user ID", async () => {
         expect(apiMock.idToken.setCustomClaim).nthCalledWith(
-          2,
-          "https://your-claim-namespace/id",
+          3,
+          "https://id-verification/id",
           idvUserId
         );
       });
@@ -259,14 +264,17 @@ describe("Identity Verification", () => {
     describe("IDV status unsuccessful", () => {
       let idvUserId;
       let idvStatus;
+      let tokenIat;
 
       beforeEach(async () => {
         eventMock.secrets.TOKEN_SECRET = faker.datatype.uuid();
         idvUserId = faker.datatype.uuid();
         idvStatus = faker.random.word();
+        tokenIat = faker.datatype.number();
         apiMock.redirect.validateToken = jest.fn(() => ({
           sub: idvUserId,
           status: idvStatus,
+          iat: tokenIat,
         }));
       });
 
@@ -284,16 +292,25 @@ describe("Identity Verification", () => {
         });
 
         it("sets the IDV status claim", async () => {
-          expect(apiMock.idToken.setCustomClaim).nthCalledWith(
+          expect(apiMock.idToken.setCustomClaim).toHaveBeenNthCalledWith(
             1,
-            "https://your-claim-namespace/status",
+            "https://id-verification/status",
             idvStatus
           );
         });
-        it("sets the IDV user ID", async () => {
-          expect(apiMock.idToken.setCustomClaim).nthCalledWith(
+
+        it("sets the last check claim", async () => {
+          expect(apiMock.idToken.setCustomClaim).toHaveBeenNthCalledWith(
             2,
-            "https://your-claim-namespace/id",
+            "https://id-verification/last-check",
+            tokenIat
+          );
+        });
+
+        it("sets the IDV user ID", async () => {
+          expect(apiMock.idToken.setCustomClaim).toHaveBeenNthCalledWith(
+            3,
+            "https://id-verification/id",
             idvUserId
           );
         });
