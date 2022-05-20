@@ -1,6 +1,6 @@
 // Hard-coded token claim namespace
 // https://auth0.com/docs/secure/tokens/json-web-tokens/create-namespaced-custom-claims
-const claimNamespace = "https://your-claim-namespace/";
+const claimNamespace = "https://id-verification/";
 
 // Hard-coded user metadata namespace
 // https://auth0.com/docs/manage-users/user-accounts/metadata
@@ -22,7 +22,9 @@ const idvRequiredCheck = (event) => {
  * @returns
  */
 exports.onExecutePostLogin = async (event, api) => {
-  const { TOKEN_SECRET, IDV_DOMAIN, IDV_EXPIRES_IN } = event.secrets;
+  const { TOKEN_SECRET } = event.secrets;
+  const { IDV_DOMAIN, IDV_EXPIRES_IN } = event.configuration;
+
   const isIdvRequired = idvRequiredCheck(event);
 
   // Check for required configuration values.
@@ -31,7 +33,7 @@ exports.onExecutePostLogin = async (event, api) => {
     console.log("Missing required configuration.");
     if (isIdvRequired) {
       // Block the login if IDV is required for this application.
-      api.access.deny("configuration_error", "IDV failed, please see your administrator.");
+      api.access.deny("idv_configuration_error");
     }
     // Stop processing.
     return;
@@ -39,7 +41,7 @@ exports.onExecutePostLogin = async (event, api) => {
 
   const {
     id: idvUserId, // User identifier from the IDV service
-    lastSuccessfulCheck, // Date and time of last IDV check
+    lastSuccessfulCheck, // Date and time of last IDV check, UNIX timecode foramt
   } = event.user.app_metadata[metadataNamespace] || {};
 
   if (idvUserId) {
@@ -74,7 +76,7 @@ exports.onExecutePostLogin = async (event, api) => {
 
   // Non-interactive login flow and IDV is required.
   if (isIdvRequired && !api.redirect.canRedirect()) {
-    api.access.deny("interaction_required", "IDV required but impossible.");
+    api.access.deny("idv_interaction_required");
     return;
   }
 
@@ -85,7 +87,7 @@ exports.onExecutePostLogin = async (event, api) => {
     secret: TOKEN_SECRET,
   });
 
-  api.redirect.sendUserTo(`https://${IDV_DOMAIN}/idv-check`, {
+  api.redirect.sendUserTo(`https://${IDV_DOMAIN}/id-verification`, {
     query: { token: idvToken },
   });
 };
@@ -103,25 +105,28 @@ exports.onContinuePostLogin = async (event, api) => {
   } catch (error) {
     console.log(`IDV failed when trying to validate the token: ${error.message}`);
     if (isIdvRequired) {
-      api.access.deny("verification_failed", "IDV failed.");
+      api.access.deny("idv_verification_failed");
     }
     return;
   }
 
-  const { sub: idvUserId, status: idvStatus } = tokenPayload;
+  const { sub: idvUserId, status: idvStatus, iat: idvLastCheck } = tokenPayload;
 
   if (idvStatus === "success") {
     api.user.setAppMetadata(metadataNamespace, {
       id: idvUserId,
-      lastSuccessfulCheck: tokenPayload.iat,
+      lastSuccessfulCheck: idvLastCheck,
     });
   } else if (isIdvRequired) {
-    api.access.deny("verification_failed", "IDV failed.");
+    api.access.deny("idv_verification_failed");
     return;
   }
 
   // eslint-disable-next-line -- REVIEWED
   api.idToken.setCustomClaim(`${claimNamespace}status`, idvStatus);
+
+  // eslint-disable-next-line -- REVIEWED
+  api.idToken.setCustomClaim(`${claimNamespace}last-check`, idvLastCheck);
 
   // eslint-disable-next-line -- REVIEWED
   api.idToken.setCustomClaim(`${claimNamespace}id`, idvUserId);
