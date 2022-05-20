@@ -7,7 +7,7 @@ This guide walks you through how to set up and activate identity verification us
 
 ## Set up the Identity Verification Service
 
-The Identity Verification Service needs to maintian an endpoint `/id-verfication` on the domain provided via the configuration steps below. This endpoint needs to verify and decode the redirect token, complete the ID verification, then redirect back to Auth0 with the same `state` value found in URL parameters. 
+The Identity Verification Service needs to maintain an endpoint `/id-verfication` on the domain provided via the configuration steps below. This endpoint needs to verify and decode the redirect token, complete the ID verification, then redirect back to Auth0 with the same `state` value found in URL parameters. 
 
 ## Add the Auth0 Action
 
@@ -26,13 +26,13 @@ The Identity Verification Service needs to maintian an endpoint `/id-verfication
 
 ## Applications Requiring Identity Verification (optional)
 
-If you have a sensitive application that requires identity verification for every login, you can set an Application metadat value in Auth0 to enforce this check. Follow [the instructions here](https://auth0.com/docs/get-started/applications/configure-application-metadata) to set a metadata entry with a **Key** of `IDV_REQUIRED` set to a **Value** of `true` and all logins for that Application will be protected by this check.
+If you have a sensitive application that requires identity verification for every login, you can set an Application metadata value in Auth0 to enforce this check. Follow [the instructions here](https://auth0.com/docs/get-started/applications/configure-application-metadata) to set a metadata entry with a **Key** of `IDV_REQUIRED` set to a **Value** of `true` and all logins for that Application will be protected by this check.
 
 ## Results
 
 The result of this Action depends on the configuration and the outcome of the identity verification. Applications requesting login should look for the following claims in the returned ID token:
 
-- `https://id-verification/status` - This claim will contain the status of the identity verfication. A status of `valid` means it completed successfully. If this claim is missing or contains any other status means the verification failed or was not completed.
+- `https://id-verification/status` - This claim will contain the status of the identity verification. A status of `valid` means it completed successfully. If this claim is missing or contains any other status means the verification failed or was not completed.
 - `https://id-verification/last-check` - If present, this claim will contain the date and time of the last identity verification check 
 - `https://id-verification/id` - If present, this claim will contain the user ID from the verification service.
 
