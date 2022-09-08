@@ -1,3 +1,6 @@
+# This repository has been ARCHIVED
+The example has moved into the [Post Login Action Template Repository](https://github.com/Auth0-Marketplace/TEMPLATE-action-post-login/tree/main/examples)
+
 # Identity Verification Example Action Integration
 
 This repo contains an example for an Action that redirects to a service to check a user's identification. The code in this repo is meant to be used as a starting point for an Action integration with a similar purpose and should not be used as-is in production. 
